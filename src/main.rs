@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+//#![allow(dead_code)]
 
 extern crate sdl2;
 
@@ -66,14 +66,26 @@ impl Chip8 {
     }
 
 
-    fn draw_square(&mut self, canv: &mut Canvas<Window>, xu16: u16, yu16: u16, height: u16) {
+    fn draw_instr(&mut self, canv: &mut Canvas<Window>, xu16: u16, yu16: u16, height: u16) {
 
         let x: i32 = i32::try_from(xu16).unwrap();
         let y: i32 = i32::try_from(yu16).unwrap();
+        
+        for isprite in 0..height {
+            canv.set_draw_color(Color::RGB(255, 255, 255));
+            let hpp_i32 = i32::try_from(HEIGHT_PER_PIXEL).unwrap();
+            let wpp_i32 = i32::try_from(WIDTH_PER_PIXEL).unwrap();
 
-        canv.set_draw_color(Color::RGB(255, 255, 255));
-        let height_u32 = u32::from(height);
-        canv.fill_rect(Rect::new(x*i32::try_from(WIDTH_PER_PIXEL).unwrap(),y*i32::try_from(HEIGHT_PER_PIXEL).unwrap(), WIDTH_PER_PIXEL, HEIGHT_PER_PIXEL*height_u32)).unwrap();
+            let sprite = self.rom_bytes[usize::try_from(self.ireg + isprite).unwrap()];
+
+            let isprite_i32 = i32::try_from(isprite).unwrap();
+
+            for bit in 0..8 {
+                if (1 << (7 - bit)) & sprite != 0 {
+                    canv.fill_rect(Rect::new(x*wpp_i32 + bit*wpp_i32, y*hpp_i32 + isprite_i32*hpp_i32, WIDTH_PER_PIXEL, HEIGHT_PER_PIXEL)).unwrap();
+                } 
+            }
+        }
     }
 
 
@@ -104,8 +116,8 @@ impl Chip8 {
     //Decode
     fn decode(&mut self, instr: u16, canv: &mut Canvas<Window>) {
         print_u16_hex(instr);
-        println!("PC: {}", self.ip);
-        println!("-----");
+        //println!("PC: {}", self.ip);
+        //println!("-----");
         match (instr & 0xf000) >> 12 {
             0 => {  // clear screen
                 println!("Clearing screen");
@@ -122,37 +134,36 @@ impl Chip8 {
             },
             1 => {  // jump
                 let address: u16 = instr & NNN;
-                assert_ne!(self.ip - 2, usize::try_from(address).unwrap());
                 self.ip = usize::try_from(address).unwrap();
 
-                println!("Jumping! addr {}", address);
+                // println!("Jumping! addr {}", address);
             },
             6 => {  // set register vx
                 let register: usize = usize::try_from((instr & X) >> 8).unwrap();
                 let value: u16 = instr & NN;
 
                 self.registers[register] = value;
-                println!("Setting register. reg {}, value {}", register, value);
+                // println!("Setting register. reg {}, value {}", register, value);
             },
             7 => {  // add value to register vx
                 let register: usize = usize::try_from((instr & X) >> 8).unwrap();
                 let value = instr & NN;
                 self.registers[register] += value;
-                println!("Adding value to register. reg {}, value {}", register, value);
+                // println!("Adding value to register. reg {}, value {}", register, value);
             },
             10 => {  // set index register i
                 let index = instr & NNN;
                 self.ireg = index;
-                println!("Setting index register {index}");
+                // println!("Setting index register {index}");
             },
             13 => {  // display_draw
                 let reg_x = usize::try_from((instr & X) >> 8).unwrap();
                 let reg_y = usize::try_from((instr & Y) >> 4).unwrap();
                 let height = instr & N;
 
-                self.draw_square(canv, self.registers[reg_x], self.registers[reg_y], height);
+                self.draw_instr(canv, self.registers[reg_x], self.registers[reg_y], height);
                 self.draw(canv);
-                println!("display draw! regx {}, regy {}, height {}", reg_x, reg_y, height);
+                // println!("display draw! regx {}, regy {}, height {}", reg_x, reg_y, height);
             }
             _ => println!("Do not recognize the opcode")
         }
@@ -193,7 +204,7 @@ fn read_rom(name: &str) -> Vec<u8>{
 }
 
 
-fn main_cpu_loop() {
+fn main_cpu_loop(rom_name: &str) {
     let mut cpu: Chip8 = Chip8 {
         stack: Vec::new(),
         delay_timer: 60,
@@ -201,7 +212,7 @@ fn main_cpu_loop() {
         registers: [0; 16],
         ireg: 0,
         ip: usize::try_from(ADDR_OFFSET).unwrap(),
-        rom_bytes: read_rom("roms/ibm.ch8")
+        rom_bytes: read_rom(rom_name)
     };
 
     //Canvas
@@ -239,13 +250,11 @@ fn main_cpu_loop() {
         let instr = cpu.fetch();
         cpu.decode(instr, &mut canvas);
 
-        std::thread::sleep(Duration::from_secs_f32(1.0/60.0));
+        std::thread::sleep(Duration::from_secs_f32(1.0/10.0));
     }
 }
 
 
 fn main() {
-    // test_cpu();
-    // test_read_rom()
-    main_cpu_loop();
+    main_cpu_loop("roms/ibm.ch8");
 }
