@@ -1,4 +1,4 @@
-//#![allow(dead_code)]
+#![allow(dead_code)]
 
 extern crate sdl2;
 
@@ -27,7 +27,7 @@ const ADDR_OFFSET: u16 = 0x200;
 
 
 struct Chip8 {
-    pub stack: Vec<i32>,
+    pub stack: Vec<u16>,
     pub delay_timer: i32,
     pub sound_timer: i32,
     registers: [u16; 16],
@@ -39,12 +39,12 @@ struct Chip8 {
 
 impl Chip8 {
     // The stack
-    fn add_to_stack(&mut self, val: i32) {
+    fn push_stack(&mut self, val: u16) {
         self.stack.push(val);
     }
 
 
-    fn pop_stack(&mut self) -> i32 {
+    fn pop_stack(&mut self) -> u16 {
         self.stack.pop().unwrap()
     }
 
@@ -112,15 +112,18 @@ impl Chip8 {
         bytes
     }
 
+    
+    fn skip_instructions(&mut self, num_instr: u16) {
+        self.ip += usize::try_from(num_instr*2).unwrap();
+    }
+
 
     //Decode
     fn decode(&mut self, instr: u16, canv: &mut Canvas<Window>) {
         print_u16_hex(instr);
-        //println!("PC: {}", self.ip);
-        //println!("-----");
+
         match (instr & 0xf000) >> 12 {
             0 => {  // clear screen
-                println!("Clearing screen");
                 match instr & NNN {
                     0xe0 => { // Clear screen
                         self.clear(canv);
@@ -135,26 +138,79 @@ impl Chip8 {
             1 => {  // jump
                 let address: u16 = instr & NNN;
                 self.ip = usize::try_from(address).unwrap();
+            },
+            2 => { // jump to address and store current address in stack
+                let address = instr & NNN;
+                self.push_stack(u16::try_from(self.ip).unwrap());
+                self.ip = usize::try_from(address).unwrap();
+            },
+            3 => {
+                let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
+                let reg_x = self.registers[ireg_x];
 
-                // println!("Jumping! addr {}", address);
+                if reg_x == instr & NN {
+                    self.skip_instructions(1);
+                }
+            },
+            4 => {
+                let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
+                let reg_x = self.registers[ireg_x];
+
+                if reg_x != instr & NN {
+                    self.skip_instructions(1);
+                }
+            },
+            5 => { // jump if registers are equal
+                let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
+                let reg_x = self.registers[ireg_x];
+
+                let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
+                let reg_y = self.registers[ireg_y];
+
+                if reg_x == reg_y {
+                    self.skip_instructions(1);
+                }
             },
             6 => {  // set register vx
                 let register: usize = usize::try_from((instr & X) >> 8).unwrap();
                 let value: u16 = instr & NN;
-
                 self.registers[register] = value;
-                // println!("Setting register. reg {}, value {}", register, value);
             },
             7 => {  // add value to register vx
                 let register: usize = usize::try_from((instr & X) >> 8).unwrap();
                 let value = instr & NN;
                 self.registers[register] += value;
-                // println!("Adding value to register. reg {}, value {}", register, value);
+            },
+            8 => { // binary or
+                match instr & N {
+                    1 => {
+
+                    },
+                    2 => {
+
+                    },
+                    3 => {
+
+                    },
+                    4 => {
+
+                    }
+                }
+            },
+            9 => { // jump if registers are unequal
+                let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
+                let reg_x = self.registers[ireg_x];
+
+                let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
+                let reg_y = self.registers[ireg_y];
+
+                if reg_x != reg_y {
+                    self.skip_instructions(1);
+                }
             },
             10 => {  // set index register i
                 let index = instr & NNN;
                 self.ireg = index;
-                // println!("Setting index register {index}");
             },
             13 => {  // display_draw
                 let reg_x = usize::try_from((instr & X) >> 8).unwrap();
@@ -163,11 +219,9 @@ impl Chip8 {
 
                 self.draw_instr(canv, self.registers[reg_x], self.registers[reg_y], height);
                 self.draw(canv);
-                // println!("display draw! regx {}, regy {}, height {}", reg_x, reg_y, height);
             }
             _ => println!("Do not recognize the opcode")
         }
-        println!("");
     }
 
 
@@ -250,7 +304,7 @@ fn main_cpu_loop(rom_name: &str) {
         let instr = cpu.fetch();
         cpu.decode(instr, &mut canvas);
 
-        std::thread::sleep(Duration::from_secs_f32(1.0/10.0));
+        std::thread::sleep(Duration::from_secs_f32(1.0/5.0));
     }
 }
 
