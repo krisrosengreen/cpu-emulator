@@ -181,20 +181,52 @@ impl Chip8 {
                 let value = instr & NN;
                 self.registers[register] += value;
             },
-            8 => { // binary or
+            8 => { // binary ops
                 match instr & N {
-                    1 => {
+                    1 => { // bitwise or
+                        let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
+                        let reg_y = self.registers[ireg_y];
 
+                        let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
+                        self.registers[ireg_x] |= reg_y;
                     },
-                    2 => {
+                    2 => { // bitwise and
+                        let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
+                        let reg_y = self.registers[ireg_y];
 
+                        let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
+                        self.registers[ireg_x] &= reg_y;
                     },
-                    3 => {
+                    3 => { // Logical or
+                        let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
+                        let reg_y = self.registers[ireg_y];
 
+                        let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
+                        self.registers[ireg_x] ^= reg_y;
                     },
-                    4 => {
+                    4 => { // Add
+                        let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
+                        let reg_y = self.registers[ireg_y];
 
+                        let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
+                        self.registers[ireg_x] += reg_y;
+                    }, // Subtract
+                    5 => {
+                        let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
+                        let reg_y = self.registers[ireg_y];
+
+                        let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
+                        self.registers[ireg_x] -= reg_y;
+                    },
+                    7 => { // Subtract
+                        let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
+                        let reg_y = self.registers[ireg_y];
+
+                        let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
+                        let reg_x = self.registers[ireg_x];
+                        self.registers[ireg_x] = reg_y - reg_x;
                     }
+                    _ => println!("Unknown opcode!")
                 }
             },
             9 => { // jump if registers are unequal
