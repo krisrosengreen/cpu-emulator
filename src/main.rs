@@ -23,6 +23,8 @@ const HEIGHT: u32 = 32;  // Pixels
 const WIDTH_PER_PIXEL: u32 = 20;
 const HEIGHT_PER_PIXEL: u32 = 20;
 
+const ADDR_OFFSET: u16 = 0x200;
+
 
 struct Chip8 {
     pub stack: Vec<i32>,
@@ -101,8 +103,12 @@ impl Chip8 {
 
     //Decode
     fn decode(&mut self, instr: u16, canv: &mut Canvas<Window>) {
+        print_u16_hex(instr);
+        println!("PC: {}", self.ip);
+        println!("-----");
         match (instr & 0xf000) >> 12 {
             0 => {  // clear screen
+                println!("Clearing screen");
                 match instr & NNN {
                     0xe0 => { // Clear screen
                         self.clear(canv);
@@ -116,22 +122,28 @@ impl Chip8 {
             },
             1 => {  // jump
                 let address: u16 = instr & NNN;
+                assert_ne!(self.ip - 2, usize::try_from(address).unwrap());
                 self.ip = usize::try_from(address).unwrap();
+
+                println!("Jumping! addr {}", address);
             },
             6 => {  // set register vx
                 let register: usize = usize::try_from((instr & X) >> 8).unwrap();
                 let value: u16 = instr & NN;
 
                 self.registers[register] = value;
+                println!("Setting register. reg {}, value {}", register, value);
             },
             7 => {  // add value to register vx
                 let register: usize = usize::try_from((instr & X) >> 8).unwrap();
                 let value = instr & NN;
                 self.registers[register] += value;
+                println!("Adding value to register. reg {}, value {}", register, value);
             },
             10 => {  // set index register i
                 let index = instr & NNN;
                 self.ireg = index;
+                println!("Setting index register {index}");
             },
             13 => {  // display_draw
                 let reg_x = usize::try_from((instr & X) >> 8).unwrap();
@@ -140,9 +152,11 @@ impl Chip8 {
 
                 self.draw_square(canv, self.registers[reg_x], self.registers[reg_y], height);
                 self.draw(canv);
+                println!("display draw! regx {}, regy {}, height {}", reg_x, reg_y, height);
             }
             _ => println!("Do not recognize the opcode")
         }
+        println!("");
     }
 
 
@@ -155,13 +169,29 @@ impl Chip8 {
     }
 }
 
+
 fn print_u16_hex(val: u16) {
     println!("{:#06x}", val);
 }
 
+
 fn read_rom(name: &str) -> Vec<u8>{
-    fs::read(name).expect("Error reading rom file!")
+    let raw_rom = fs::read(name).expect("Error reading rom file!");
+    
+    let mut form_rom = Vec::new();
+
+    // Add 0x200 of empty space
+    for _ in 0..ADDR_OFFSET {
+        form_rom.push(0);
+    }
+
+    for i in raw_rom {
+        form_rom.push(i);
+    }
+
+    form_rom
 }
+
 
 fn main_cpu_loop() {
     let mut cpu: Chip8 = Chip8 {
@@ -170,7 +200,7 @@ fn main_cpu_loop() {
         sound_timer: 60,
         registers: [0; 16],
         ireg: 0,
-        ip: 0,
+        ip: usize::try_from(ADDR_OFFSET).unwrap(),
         rom_bytes: read_rom("roms/ibm.ch8")
     };
 
@@ -196,7 +226,6 @@ fn main_cpu_loop() {
     let mut event_pump = sdl_context.event_pump().unwrap();
     canvas.set_draw_color(Color::RGB(255, 255, 255));
 
-
     'mainloop: loop {
         for event in event_pump.poll_iter() {
             match event {
@@ -212,43 +241,6 @@ fn main_cpu_loop() {
 
         std::thread::sleep(Duration::from_secs_f32(1.0/60.0));
     }
-}
-
-
-fn test_read_rom() {
-    let contents = fs::read("roms/ibm.ch8").expect("Reading the rom!");
-
-    let mut value: u16 = 0;
-
-    println!("Heya: {:#04x} {:#04x}", contents[2], contents[3]);
-
-    value += u16::from(contents[2]) << 8;
-    value += u16::from(contents[3]);
-
-    println!("{:#06x}", value);
-}
-
-
-fn test_cpu() {
-    let mut cpu = Chip8 {
-        stack: Vec::new(),
-        delay_timer: 60,
-        sound_timer: 60,
-        registers: [0; 16],
-        ireg: 0,
-        ip: 0,
-        rom_bytes: read_rom("roms/ibm.ch8")
-    };
-
-    let bytes = cpu.get_instruction();
-
-    println!("{:#06x}", bytes);
-
-    let val: u16 = 9999;
-
-    println!("{}", (val & 0xf000) >> 12);
-
-    let instr = (val & 0xf000) >> 12;
 }
 
 
