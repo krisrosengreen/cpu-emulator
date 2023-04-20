@@ -8,8 +8,8 @@ use sdl2::rect::Rect;
 use sdl2::render::Canvas;
 use sdl2::video::Window;
 use std::fs;
-use std::time::Duration;
-
+use std::time::{Duration, UNIX_EPOCH, SystemTime};
+use rand::Rng;
 
 const NNN: u16 = 0x0fff;
 const NN: u16 = 0x00ff;
@@ -97,6 +97,18 @@ impl Chip8 {
     fn clear(&mut self, canv: &mut Canvas<Window>) {
         canv.set_draw_color(Color::RGB(0, 0, 0));
         canv.clear();
+    }
+
+
+    fn get_delay_timer(&mut self) -> u16 {
+        let hz60: u128 = 1000/60;
+        let start = SystemTime::now();
+        let since_the_epoch = start
+            .duration_since(UNIX_EPOCH)
+            .expect("ERR!");
+
+        let millis = since_the_epoch.as_millis();
+        u16::try_from((millis / hz60) % 60).unwrap()
     }
 
 
@@ -221,10 +233,13 @@ impl Chip8 {
                     7 => { // Subtract
                         let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
                         let reg_y = self.registers[ireg_y];
-
+                    
                         let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
                         let reg_x = self.registers[ireg_x];
                         self.registers[ireg_x] = reg_y - reg_x;
+                    },
+                    8 => {
+                        // Incomplete!
                     }
                     _ => println!("Unknown opcode!")
                 }
@@ -232,23 +247,36 @@ impl Chip8 {
             9 => { // jump if registers are unequal
                 let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
                 let reg_x = self.registers[ireg_x];
-
+                
                 let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
                 let reg_y = self.registers[ireg_y];
-
+                    
                 if reg_x != reg_y {
                     self.skip_instructions(1);
                 }
             },
-            10 => {  // set index register i
+            0xa => {  // set index register i
                 let index = instr & NNN;
                 self.ireg = index;
             },
-            13 => {  // display_draw
+            0xb => { // jump with offset from register v0
+                let jump_addr = instr & NNN + self.registers[0];
+                self.ip = usize::try_from(jump_addr).unwrap();
+            },
+            0xc => {
+                let val = instr & NN;
+
+                let mut rng = rand::thread_rng();
+                let rand_num: u16 = (rng.gen::<u16>() & NN) & val;
+
+                let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
+                self.registers[ireg_x] = rand_num;
+            },
+            0xd => {  // display_draw
                 let reg_x = usize::try_from((instr & X) >> 8).unwrap();
                 let reg_y = usize::try_from((instr & Y) >> 4).unwrap();
                 let height = instr & N;
-
+                
                 self.draw_instr(canv, self.registers[reg_x], self.registers[reg_y], height);
                 self.draw(canv);
             }
@@ -341,6 +369,22 @@ fn main_cpu_loop(rom_name: &str) {
 }
 
 
+fn test() {
+    let hz60: u128 = 1000/60;
+    loop {
+        let start = SystemTime::now();
+        let since_the_epoch = start
+            .duration_since(UNIX_EPOCH)
+            .expect("ERR!");
+
+        let millis = since_the_epoch.as_millis();
+
+        println!("{}", (millis / hz60) % 60);
+    }
+}
+
+
 fn main() {
     main_cpu_loop("roms/ibm.ch8");
+    // test();
 }

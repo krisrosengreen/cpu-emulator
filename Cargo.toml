@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 draw = "0.3.0"
+rand = "0.8.5"
 sdl2 = "0.35.2"
