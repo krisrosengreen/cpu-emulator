@@ -182,7 +182,6 @@ impl Chip8 {
                 let xreg = self.get_X_register_value(instr);
                 let value = instr & NN;
                 self.set_X_register_value(instr, (xreg + value) & NN);
-                println!("xreg value {} value add {} new xreg value {}", xreg, value, self.get_X_register_value(instr));
             },
             8 => { // binary ops
                 match instr & N {
@@ -213,20 +212,22 @@ impl Chip8 {
                         self.registers[ireg_x] ^= reg_y;
                     },
                     0x0004 => { // Add. Also checks overflow. Sets 1 to VF if overflow
-                        let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
-                        let reg_y = self.registers[ireg_y];
-
-                        let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
+                        let reg_y = u8_from_u16(self.get_Y_register_value(instr));
+                        let ireg_x = get_X(instr);
 
                         match self.registers[ireg_x].checked_add(reg_y) {
-                            Some(v) => {
-                                self.registers[ireg_x] = v;
+                            Some(_) => {
                                 self.registers[0xf] = 0;
                             },
                             None => {
                                 self.registers[0xf] = 1;
                             }
                         }
+
+                        let xreg = self.get_X_register_value(instr);
+                        let yreg = self.get_X_register_value(instr);
+
+                        self.set_X_register_value(instr, (xreg + yreg) & 0xff);
                     }, // Subtract
                     0x0005 => {
                         let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
@@ -240,6 +241,9 @@ impl Chip8 {
                                 self.registers[0xf] = 1;
                             },
                             None => {
+                                let underflow_val = (0xff - (reg_y - self.registers[ireg_x])) + 1;
+                                self.registers[ireg_x] = underflow_val;
+
                                 self.registers[0xf] = 1; 
                             }
                         }
@@ -267,6 +271,7 @@ impl Chip8 {
                                 self.registers[0xf] = 1;
                             },
                             None => {
+                                self.registers[ireg_x] = (0xff - (reg_x - reg_y)) + 1;
                                 self.registers[0xf] = 1; 
                             }
                         }
@@ -339,14 +344,15 @@ impl Chip8 {
                     },
                     0x0033 => {
                         let xreg = self.get_X_register_value(instr);
-
                         let ones = xreg % 10;
                         let tens = ((xreg - ones) % 100) / 10;
                         let houndreds = ((xreg - tens - ones) % 1000) / 100;
 
-                        self.rom_bytes[usize_from_u16(self.ireg)] = u8::try_from(ones).unwrap();
+                        println!("  - hex {} xreg {} ones {} tens {} houndreds {}", instr, xreg, ones, tens, houndreds);
+
+                        self.rom_bytes[usize_from_u16(self.ireg)] = u8::try_from(houndreds).unwrap();
                         self.rom_bytes[usize_from_u16(self.ireg) + 1] = u8::try_from(tens).unwrap();
-                        self.rom_bytes[usize_from_u16(self.ireg) + 2] = u8::try_from(houndreds).unwrap();
+                        self.rom_bytes[usize_from_u16(self.ireg) + 2] = u8::try_from(ones).unwrap();
                     },
                     0x0055 => {
                         let xval = get_X(instr);
@@ -359,7 +365,7 @@ impl Chip8 {
                         let xval = get_X(instr);
 
                         for i in 0..(xval + 1) {
-                            self.registers[i] = self.rom_bytes[usize::try_from(self.ireg).unwrap() + 1];
+                            self.registers[i] = self.rom_bytes[usize::try_from(self.ireg).unwrap() + i];
                         }
                         
                     },
@@ -401,8 +407,6 @@ impl Chip8 {
 
 
     fn set_X_register_value(&mut self, instr: u16, val: u16)  {
-        println!("Value:::");
-        print_u16_hex(val);
         self.registers[usize::try_from((instr&X)>>8).unwrap()] = u8::try_from(val & NN).unwrap();
     }
 
