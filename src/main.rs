@@ -1,5 +1,9 @@
 mod chip8; 
 
+const INSTR_PER_SECS: f32 = 20.0;
+
+
 fn main() {
-    chip8::main_cpu_loop("chip8-roms/demos/test2.ch8");
+    // chip8::main_cpu_loop("chip8-roms/demos/test3.ch8", INSTR_PER_SECS);
+    chip8::main_cpu_loop("roms/5-quirks.ch8", INSTR_PER_SECS);
 }

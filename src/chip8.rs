@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![allow(non_snake_case)]
 
 extern crate sdl2;
 
@@ -25,13 +26,12 @@ const HEIGHT_PER_PIXEL: u32 = 20;
 
 const ADDR_OFFSET: u16 = 0x200;
 
-const INSTR_PER_SECS: f32 = 20.0;
 
 
 struct Chip8 {
     pub stack: Vec<u16>,
-    pub delay_timer: i32,
-    pub sound_timer: i32,
+    pub delay_timer: u16,
+    pub sound_timer: u16,
     registers: [u16; 16],
     ip: usize,  // Instruction pointer
     ireg: u16,
@@ -53,18 +53,15 @@ impl Chip8 {
 
     //Timers
     fn decrement_timers(&mut self) {
-        if self.delay_timer == 0
+        if self.delay_timer > 0
         {
-            self.delay_timer = 60;
+            self.delay_timer -= 1;
         }
 
-        if self.sound_timer == 0
+        if self.sound_timer > 0
         {
-            self.sound_timer = 60;
+            self.sound_timer -= 1;
         }
-
-        self.delay_timer -= 1;
-        self.sound_timer -= 1;
     }
 
 
@@ -146,7 +143,7 @@ impl Chip8 {
                         let ret_addr = self.stack.pop().unwrap();
                         self.ip = usize::try_from(ret_addr).unwrap();
                     }
-                    _ => println!("Bad instruction!")
+                    _ => print_unknown_instr(instr)
                 }
             },
             1 => {  // jump
@@ -197,6 +194,12 @@ impl Chip8 {
             },
             8 => { // binary ops
                 match instr & N {
+                    0 => {
+                        let xreg = get_X(instr);
+                        let yreg = get_Y(instr);
+
+                        self.set_X_register_value(instr, u16_from_usize(xreg | yreg));
+                    },
                     1 => { // bitwise or
                         let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
                         let reg_y = self.registers[ireg_y];
@@ -218,19 +221,48 @@ impl Chip8 {
                         let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
                         self.registers[ireg_x] ^= reg_y;
                     },
-                    4 => { // Add
+                    4 => { // Add. Also checks overflow. Sets 1 to VF if overflow
                         let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
                         let reg_y = self.registers[ireg_y];
 
                         let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
-                        self.registers[ireg_x] += reg_y;
+
+                        match self.registers[ireg_x].checked_add(reg_y) {
+                            Some(v) => {
+                                self.registers[ireg_x] = v;
+                                self.registers[0xf] = 0;
+                            },
+                            None => {
+                                self.registers[0xf] = 1;
+                            }
+                        }
                     }, // Subtract
                     5 => {
                         let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
                         let reg_y = self.registers[ireg_y];
 
                         let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
-                        self.registers[ireg_x] -= reg_y;
+
+                        match self.registers[ireg_x].checked_sub(reg_y) {
+                            Some(v) => {
+                                self.registers[ireg_x] = v;
+                                self.registers[0xf] = 1;
+                            },
+                            None => {
+                                self.registers[0xf] = 1; 
+                            }
+                        }
+                    },
+                    6 => { // Ambiguous shift
+                        let yreg_val = self.get_Y_register_value(instr);
+
+                        if 0xf000 & yreg_val == 0x0001 {
+                            self.registers[0xf] = 1;
+                        } else if 0xf000 & yreg_val == 0x0000 {
+                            self.registers[0xf] = 0;
+                        }
+
+                        self.set_X_register_value(instr, yreg_val >> 1);
                     },
                     7 => { // Subtract
                         let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
@@ -238,12 +270,28 @@ impl Chip8 {
                     
                         let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
                         let reg_x = self.registers[ireg_x];
-                        self.registers[ireg_x] = reg_y - reg_x;
+                        match reg_y.checked_sub(reg_x) {
+                            Some(v) => {
+                                self.registers[ireg_x] = v;
+                                self.registers[0xf] = 1;
+                            },
+                            None => {
+                                self.registers[0xf] = 1; 
+                            }
+                        }
                     },
-                    8 => {
-                        // Incomplete!
-                    }
-                    _ => println!("Unknown opcode!")
+                    0xe => { // Ambiguous shift
+                        let yreg_val = self.get_Y_register_value(instr);
+
+                        if 0xf000 & yreg_val == 0x1000 {
+                            self.registers[0xf] = 1;
+                        } else if 0xf000 & yreg_val == 0x0000 {
+                            self.registers[0xf] = 0;
+                        }
+
+                        self.set_X_register_value(instr, yreg_val << 1);
+                    },
+                    _ => print_unknown_instr(instr)
                 }
             },
             9 => { // jump if registers are unequal
@@ -281,8 +329,60 @@ impl Chip8 {
                 
                 self.draw_instr(canv, self.registers[reg_x], self.registers[reg_y], height);
                 self.draw(canv);
+            },
+            0xf => {
+                match instr & NN {
+                    0x0007 => {
+                        self.registers[get_X(instr)] = self.get_delay_timer();
+                    },
+                    0x0015 => {
+                        let ireg = get_X(instr);
+
+                        self.delay_timer = self.registers[ireg];
+                    },
+                    0x0018 => {
+                        let ireg = get_X(instr);
+
+                        self.sound_timer = self.registers[ireg];
+                    },
+                    0x001e => {
+                        let xreg = self.get_X_register_value(instr);
+                        self.ireg += xreg;
+                    },
+                    0x0033 => {
+                        let xreg = self.get_X_register_value(instr);
+
+                        let ones = xreg % 10;
+                        let tens = ((xreg - ones) % 100) / 10;
+                        let houndreds = ((xreg - tens - ones) % 1000) / 100;
+
+                        self.rom_bytes[usize_from_u16(self.ireg)] = u8::try_from(ones).unwrap();
+                        self.rom_bytes[usize_from_u16(self.ireg) + 1] = u8::try_from(tens).unwrap();
+                        self.rom_bytes[usize_from_u16(self.ireg) + 2] = u8::try_from(houndreds).unwrap();
+                    },
+                    0x0055 => {
+                        let xval = get_X(instr);
+
+                        for i in 0..(xval + 1) {
+                            self.rom_bytes[usize::try_from(self.ireg).unwrap() + i*2] = u8::try_from(self.registers[i] & NN).unwrap();
+                            self.rom_bytes[usize::try_from(self.ireg + 1).unwrap() + i*2] = u8::try_from(self.registers[i] >> 8).unwrap();
+                        }
+                    },
+                    0x0065 => {
+                        let xval = get_X(instr);
+
+                        for i in 0..(xval + 1) {
+                            let mut two_byte_value: u16 = u16::try_from(self.rom_bytes[usize::try_from(self.ireg).unwrap() + i*2]).unwrap();
+                            two_byte_value += u16::try_from(self.rom_bytes[usize::try_from(self.ireg + 1).unwrap() + i*2]).unwrap() << 8;
+
+                            self.registers[i] = two_byte_value;
+                        }
+                        
+                    },
+                    _ => print_unknown_instr(instr)
+                }
             }
-            _ => println!("Do not recognize the opcode")
+            _ => print_unknown_instr(instr)
         }
     }
 
@@ -294,11 +394,56 @@ impl Chip8 {
         value += u16::try_from(self.rom_bytes[ip + 1]).unwrap();
         return value
     }
+
+    fn get_X_register_value(&mut self, instr: u16) -> u16 {
+        self.registers[usize::try_from((instr&X)>>8).unwrap()]
+    }
+
+
+    fn get_Y_register_value(&mut self, instr: u16) -> u16 {
+        self.registers[usize::try_from((instr&Y)>>4).unwrap()]
+    }
+
+
+    fn set_X_register_value(&mut self, instr: u16, val: u16)  {
+        self.registers[usize::try_from((instr&X)>>8).unwrap()] = val;
+    }
+
+
+    fn set_Y_register_value(&mut self, instr: u16, val: u16) {
+        self.registers[usize::try_from((instr&Y)>>4).unwrap()] = val;
+    }
+
+}
+
+
+fn get_X(instr: u16) -> usize {
+    usize::try_from((instr & X) >> 8).unwrap()
+}
+
+
+fn get_Y(instr: u16) -> usize {
+    usize::try_from((instr & X) >> 4).unwrap()
+}
+
+
+fn u16_from_usize(val: usize) -> u16 {
+    u16::try_from(val).unwrap()
+}
+
+
+fn usize_from_u16(val: u16) -> usize {
+    usize::try_from(val).unwrap()
 }
 
 
 fn print_u16_hex(val: u16) {
     println!("{:#06x}", val);
+}
+
+
+fn print_unknown_instr(instr: u16) {
+    println!("Unknown instruction {:#06x}", instr);
 }
 
 
@@ -320,7 +465,19 @@ fn read_rom(name: &str) -> Vec<u8>{
 }
 
 
-pub fn main_cpu_loop(rom_name: &str) {
+pub fn get_current_millis() -> u128 {
+    let start = SystemTime::now();
+    let since_the_epoch = start
+        .duration_since(UNIX_EPOCH)
+        .expect("ERR!");
+
+    let millis = since_the_epoch.as_millis();
+    
+    millis
+}
+
+
+pub fn main_cpu_loop(rom_name: &str, instr_per_secs: f32) {
     let mut cpu: Chip8 = Chip8 {
         stack: Vec::new(),
         delay_timer: 60,
@@ -353,6 +510,12 @@ pub fn main_cpu_loop(rom_name: &str) {
     let mut event_pump = sdl_context.event_pump().unwrap();
     canvas.set_draw_color(Color::RGB(255, 255, 255));
 
+    let hz60: u128 = 1000/60;
+
+    // Timers
+    
+    let mut last_time: u128 = get_current_millis();
+
     'mainloop: loop {
         for event in event_pump.poll_iter() {
             match event {
@@ -360,12 +523,19 @@ pub fn main_cpu_loop(rom_name: &str) {
                 _ => {}
             }
         }
+
+        let current_millis = get_current_millis();
+
+        if current_millis - last_time >= hz60 {
+            cpu.decrement_timers();
+            last_time = current_millis;
+        }
+
         // Decrement timers
-        cpu.decrement_timers();
 
         let instr = cpu.fetch();
         cpu.decode(instr, &mut canvas);
 
-        std::thread::sleep(Duration::from_secs_f32(1.0/INSTR_PER_SECS));
+        std::thread::sleep(Duration::from_secs_f32(1.0/instr_per_secs));
     }
 }
