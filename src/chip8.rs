@@ -164,10 +164,9 @@ impl Chip8 {
                 }
             },
             4 => {
-                let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
-                let reg_x = self.registers[ireg_x];
+                let xreg = self.get_X_register_value(instr);
 
-                if reg_x != instr & NN {
+                if xreg != instr & NN {
                     self.skip_instructions(1);
                 }
             },
@@ -188,9 +187,10 @@ impl Chip8 {
                 self.registers[register] = value;
             },
             7 => {  // add value to register vx
-                let register: usize = usize::try_from((instr & X) >> 8).unwrap();
+                let xreg = self.get_X_register_value(instr);
                 let value = instr & NN;
-                self.registers[register] += value;
+                self.set_X_register_value(instr, xreg + value);
+                println!("xreg value {} value add {} new xreg value {}", xreg, value, self.get_X_register_value(instr));
             },
             8 => { // binary ops
                 match instr & N {
@@ -394,6 +394,7 @@ impl Chip8 {
         value += u16::try_from(self.rom_bytes[ip + 1]).unwrap();
         return value
     }
+
 
     fn get_X_register_value(&mut self, instr: u16) -> u16 {
         self.registers[usize::try_from((instr&X)>>8).unwrap()]
