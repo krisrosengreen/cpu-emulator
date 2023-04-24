@@ -4,6 +4,7 @@
 extern crate sdl2;
 
 use sdl2::event::Event;
+use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::Canvas;
@@ -24,8 +25,10 @@ const HEIGHT: u32 = 32;  // Pixels
 const WIDTH_PER_PIXEL: u32 = 20;
 const HEIGHT_PER_PIXEL: u32 = 20;
 
-const ADDR_OFFSET: u16 = 0x200;
+const ADDR_OFFSET: usize = 0x200;
 
+const PIXEL_OFF_COLOR: Color = Color::RGB(0x99, 0x66, 0x01);
+const PIXEL_ON_COLOR: Color = Color::RGB(0xff, 0xcc, 0x01);
 
 
 struct Chip8 {
@@ -40,7 +43,19 @@ struct Chip8 {
 
 
 impl Chip8 {
-    // The stack
+    fn standard(rom_name: &str) -> Self {
+        Chip8 {
+            stack: Vec::new(),
+            delay_timer: 0,
+            sound_timer: 0,
+            registers: [0; 16],
+            ip: ADDR_OFFSET,
+            ireg: 0,
+            rom_bytes: read_rom(rom_name)
+        }
+    }
+
+
     fn push_stack(&mut self, val: u16) {
         self.stack.push(val);
     }
@@ -51,7 +66,6 @@ impl Chip8 {
     }
 
 
-    //Timers
     fn decrement_timers(&mut self) {
         if self.delay_timer > 0
         {
@@ -66,12 +80,11 @@ impl Chip8 {
 
 
     fn draw_instr(&mut self, canv: &mut Canvas<Window>, xu16: u16, yu16: u16, height: u16) {
-
         let x: i32 = i32::try_from(xu16).unwrap();
         let y: i32 = i32::try_from(yu16).unwrap();
         
         for isprite in 0..height {
-            canv.set_draw_color(Color::RGB(255, 255, 255));
+            canv.set_draw_color(PIXEL_ON_COLOR);
             let hpp_i32 = i32::try_from(HEIGHT_PER_PIXEL).unwrap();
             let wpp_i32 = i32::try_from(WIDTH_PER_PIXEL).unwrap();
 
@@ -94,7 +107,7 @@ impl Chip8 {
 
 
     fn clear(&mut self, canv: &mut Canvas<Window>) {
-        canv.set_draw_color(Color::RGB(0, 0, 0));
+        canv.set_draw_color(PIXEL_OFF_COLOR);
         canv.clear();
     }
 
@@ -104,12 +117,7 @@ impl Chip8 {
     }
 
 
-    //Fetch
     fn fetch(&mut self) -> u16 {
-        // Read two bytes from memory and combine into one
-        // 16-bit instruction.
-
-        // Incement by 2 bytes and be ready to fetch next opcode
         let bytes = self.get_instruction();
         self.ip += 2;
 
@@ -118,11 +126,10 @@ impl Chip8 {
 
     
     fn skip_instructions(&mut self, num_instr: u16) {
-        self.ip += usize::try_from(num_instr*2).unwrap();
+        self.ip += usize_from_u16(num_instr*2);
     }
 
 
-    //Decode
     fn decode(&mut self, instr: u16, canv: &mut Canvas<Window>) {
         print_u16_hex(instr);
 
@@ -135,39 +142,34 @@ impl Chip8 {
                     0xee => { // Return to address from address in stack
                         let ret_addr = self.stack.pop().unwrap();
                         self.ip = usize::try_from(ret_addr).unwrap();
-                    }
+                    },
                     _ => print_unknown_instr(instr)
                 }
             },
             1 => {  // jump
                 let address: u16 = instr & NNN;
-                self.ip = usize::try_from(address).unwrap();
+                self.ip = usize_from_u16(address);
             },
             2 => { // jump to address and store current address in stack
                 let address = instr & NNN;
-                self.push_stack(u16::try_from(self.ip).unwrap());
-                self.ip = usize::try_from(address).unwrap();
+                self.push_stack(u16_from_usize(self.ip));
+                self.ip = usize_from_u16(address);
             },
             3 => {
-                let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
-
+                let ireg_x = get_X(instr);
                 if self.register_equal(ireg_x, instr & NN) {
                     self.skip_instructions(1);
                 }
             },
             4 => {
                 let xreg = self.get_X_register_value(instr);
-
                 if xreg != instr & NN {
                     self.skip_instructions(1);
                 }
             },
             5 => { // jump if registers are equal
-                let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
-                let reg_x = self.registers[ireg_x];
-
-                let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
-                let reg_y = self.registers[ireg_y];
+                let reg_x = self.get_X_register_value(instr);
+                let reg_y = self.get_Y_register_value(instr);
 
                 if reg_x == reg_y {
                     self.skip_instructions(1);
@@ -270,7 +272,7 @@ impl Chip8 {
                                 self.registers[ireg_x] = v;
                                 self.registers[0xf] = 1;
                             },
-                            None => {
+                            None => { // Underflow
                                 self.registers[ireg_x] = (0xff - (reg_x - reg_y)) + 1;
                                 self.registers[0xf] = 1; 
                             }
@@ -280,9 +282,9 @@ impl Chip8 {
                         let yreg_val = self.get_Y_register_value(instr);
 
                         if 0xf000 & yreg_val == 0x1000 {
-                            self.registers[0xf] = 1;
+                            self.set_register_value(0xf, 1);
                         } else if 0xf000 & yreg_val == 0x0000 {
-                            self.registers[0xf] = 0;
+                            self.set_register_value(0xf, 0);
                         }
 
                         self.set_X_register_value(instr, yreg_val << 1);
@@ -291,11 +293,8 @@ impl Chip8 {
                 }
             },
             9 => { // jump if registers are unequal
-                let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
-                let reg_x = self.registers[ireg_x];
-                
-                let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
-                let reg_y = self.registers[ireg_y];
+                let reg_x = self.get_X_register_value(instr);
+                let reg_y = self.get_Y_register_value(instr);
                     
                 if reg_x != reg_y {
                     self.skip_instructions(1);
@@ -307,7 +306,7 @@ impl Chip8 {
             },
             0xb => { // jump with offset from register v0
                 let jump_addr = instr & NNN + u16_from_u8(self.registers[0]);
-                self.ip = usize::try_from(jump_addr).unwrap();
+                self.ip = usize_from_u16(jump_addr);
             },
             0xc => {
                 let val = instr & NN;
@@ -348,8 +347,6 @@ impl Chip8 {
                         let tens = ((xreg - ones) % 100) / 10;
                         let houndreds = ((xreg - tens - ones) % 1000) / 100;
 
-                        println!("  - hex {} xreg {} ones {} tens {} houndreds {}", instr, xreg, ones, tens, houndreds);
-
                         self.rom_bytes[usize_from_u16(self.ireg)] = u8::try_from(houndreds).unwrap();
                         self.rom_bytes[usize_from_u16(self.ireg) + 1] = u8::try_from(tens).unwrap();
                         self.rom_bytes[usize_from_u16(self.ireg) + 2] = u8::try_from(ones).unwrap();
@@ -371,7 +368,7 @@ impl Chip8 {
                     },
                     _ => print_unknown_instr(instr)
                 }
-            }
+            },
             _ => print_unknown_instr(instr)
         }
     }
@@ -419,7 +416,6 @@ impl Chip8 {
     fn register_equal(&mut self, ireg: usize, val: u16) -> bool {
         self.registers[ireg] == u8::try_from(val).unwrap()
     }
-
 }
 
 
@@ -473,6 +469,7 @@ fn read_rom(name: &str) -> Vec<u8>{
         form_rom.push(0);
     }
 
+
     for i in raw_rom {
         form_rom.push(i);
     }
@@ -487,67 +484,48 @@ pub fn get_current_millis() -> u128 {
         .duration_since(UNIX_EPOCH)
         .expect("ERR!");
 
-    let millis = since_the_epoch.as_millis();
-    
-    millis
+    since_the_epoch.as_millis()
 }
 
 
 pub fn main_cpu_loop(rom_name: &str, instr_per_secs: f32) {
-    let mut cpu: Chip8 = Chip8 {
-        stack: Vec::new(),
-        delay_timer: 60,
-        sound_timer: 60,
-        registers: [0; 16],
-        ireg: 0,
-        ip: usize::try_from(ADDR_OFFSET).unwrap(),
-        rom_bytes: read_rom(rom_name)
-    };
+    let mut cpu: Chip8 = Chip8::standard(rom_name);
 
     //Canvas
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
-
     let window = video_subsystem
         .window("Chip-8", WIDTH*WIDTH_PER_PIXEL, HEIGHT*HEIGHT_PER_PIXEL)
         .position_centered()
         .opengl()
         .build()
         .map_err(|e| e.to_string()).unwrap();
-
     let mut canvas = window
         .into_canvas()
         .build()
         .map_err(|e| e.to_string()).unwrap();
-
-    canvas.set_draw_color(Color::RGB(0, 0, 0));
+    cpu.clear(&mut canvas);
     canvas.clear();
     canvas.present();
+
     let mut event_pump = sdl_context.event_pump().unwrap();
-    canvas.set_draw_color(Color::RGB(255, 255, 255));
-
-    let hz60: u128 = 1000/60;
-
-    // Timers
-    
     let mut last_time: u128 = get_current_millis();
+    let hz60: u128 = 1000/60;
 
     'mainloop: loop {
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { .. } => break 'mainloop,
+                Event::KeyDown { keycode: Some(Keycode::Escape), .. } => break 'mainloop,
                 _ => {}
             }
         }
 
         let current_millis = get_current_millis();
-
         if current_millis - last_time >= hz60 {
             cpu.decrement_timers();
             last_time = current_millis;
         }
-
-        // Decrement timers
 
         let instr = cpu.fetch();
         cpu.decode(instr, &mut canvas);
