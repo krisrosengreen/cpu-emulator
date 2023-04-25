@@ -133,6 +133,12 @@ impl Chip8 {
     fn decode(&mut self, instr: u16, canv: &mut Canvas<Window>) {
         print_u16_hex(instr);
 
+        let ixreg = get_X(instr);
+        let iyreg = get_Y(instr);
+
+        let xreg = self.get_X_register_value(instr);
+        let yreg = self.get_Y_register_value(instr);
+
         match (instr & 0xf000) >> 12 {
             0 => {  // clear screen
                 match instr & NNN {
@@ -156,22 +162,17 @@ impl Chip8 {
                 self.ip = usize_from_u16(address);
             },
             3 => {
-                let ireg_x = get_X(instr);
-                if self.register_equal(ireg_x, instr & NN) {
+                if self.register_equal(ixreg, instr & NN) {
                     self.skip_instructions(1);
                 }
             },
             4 => {
-                let xreg = self.get_X_register_value(instr);
                 if xreg != instr & NN {
                     self.skip_instructions(1);
                 }
             },
             5 => { // jump if registers are equal
-                let reg_x = self.get_X_register_value(instr);
-                let reg_y = self.get_Y_register_value(instr);
-
-                if reg_x == reg_y {
+                if xreg == yreg {
                     self.skip_instructions(1);
                 }
             },
@@ -181,7 +182,6 @@ impl Chip8 {
                 self.set_X_register_value(instr, value);
             },
             7 => {  // add value to register vx
-                let xreg = self.get_X_register_value(instr);
                 let value = instr & NN;
                 self.set_X_register_value(instr, (xreg + value) & NN);
             },
@@ -193,31 +193,22 @@ impl Chip8 {
                         self.set_X_register_value(instr, yreg);
                     },
                     0x0001 => { // bitwise or
-                        let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
-                        let reg_y = self.registers[ireg_y];
+                        let reg_y = self.registers[iyreg];
 
-                        let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
-                        self.registers[ireg_x] |= reg_y;
+                        self.registers[ixreg] |= reg_y;
                     },
                     0x0002 => { // bitwise and
-                        let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
-                        let reg_y = self.registers[ireg_y];
-
-                        let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
-                        self.registers[ireg_x] &= reg_y;
+                        let reg_y = self.registers[iyreg];
+                        self.registers[ixreg] &= reg_y;
                     },
                     0x0003 => { // Logical or
-                        let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
-                        let reg_y = self.registers[ireg_y];
-
-                        let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
-                        self.registers[ireg_x] ^= reg_y;
+                        let reg_y = self.registers[iyreg];
+                        self.registers[ixreg] ^= reg_y;
                     },
                     0x0004 => { // Add. Also checks overflow. Sets 1 to VF if overflow
                         let reg_y = u8_from_u16(self.get_Y_register_value(instr));
-                        let ireg_x = get_X(instr);
 
-                        match self.registers[ireg_x].checked_add(reg_y) {
+                        match self.registers[ixreg].checked_add(reg_y) {
                             Some(_) => {
                                 self.registers[0xf] = 0;
                             },
@@ -226,77 +217,62 @@ impl Chip8 {
                             }
                         }
 
-                        let xreg = self.get_X_register_value(instr);
-                        let yreg = self.get_X_register_value(instr);
-
                         self.set_X_register_value(instr, (xreg + yreg) & 0xff);
                     }, // Subtract
                     0x0005 => {
-                        let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
-                        let reg_y = self.registers[ireg_y];
+                        let reg_y = self.registers[iyreg];
 
-                        let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
-
-                        match self.registers[ireg_x].checked_sub(reg_y) {
+                        match self.registers[ixreg].checked_sub(reg_y) {
                             Some(v) => {
-                                self.registers[ireg_x] = v;
+                                self.registers[ixreg] = v;
                                 self.registers[0xf] = 1;
                             },
                             None => {
-                                let underflow_val = (0xff - (reg_y - self.registers[ireg_x])) + 1;
-                                self.registers[ireg_x] = underflow_val;
+                                let underflow_val = (0xff - (reg_y - self.registers[ixreg])) + 1;
+                                self.registers[ixreg] = underflow_val;
 
                                 self.registers[0xf] = 1; 
                             }
                         }
                     },
                     0x0006 => { // Ambiguous shift
-                        let yreg_val = self.get_Y_register_value(instr);
-
-                        if 0xf000 & yreg_val == 0x0001 {
+                        if 0xf000 & yreg == 0x0001 {
                             self.registers[0xf] = 1;
-                        } else if 0xf000 & yreg_val == 0x0000 {
+                        } else if 0xf000 & yreg == 0x0000 {
                             self.registers[0xf] = 0;
                         }
 
-                        self.set_X_register_value(instr, yreg_val >> 1);
+                        self.set_X_register_value(instr, yreg >> 1);
                     },
                     0x0007 => { // Subtract
-                        let ireg_y = usize::try_from((instr & Y) >> 4).unwrap();
-                        let reg_y = self.registers[ireg_y];
+                        let reg_y = self.registers[iyreg];
                     
-                        let ireg_x = usize::try_from((instr & X) >> 8).unwrap();
-                        let reg_x = self.registers[ireg_x];
+                        let reg_x = self.registers[ixreg];
                         match reg_y.checked_sub(reg_x) {
                             Some(v) => {
-                                self.registers[ireg_x] = v;
+                                self.registers[ixreg] = v;
                                 self.registers[0xf] = 1;
                             },
                             None => { // Underflow
-                                self.registers[ireg_x] = (0xff - (reg_x - reg_y)) + 1;
+                                self.registers[ixreg] = (0xff - (reg_x - reg_y)) + 1;
                                 self.registers[0xf] = 1; 
                             }
                         }
                     },
                     0x000e => { // Ambiguous shift
-                        let yreg_val = self.get_Y_register_value(instr);
-
-                        if 0xf000 & yreg_val == 0x1000 {
+                        if 0xf000 & yreg == 0x1000 {
                             self.set_register_value(0xf, 1);
-                        } else if 0xf000 & yreg_val == 0x0000 {
+                        } else if 0xf000 & yreg == 0x0000 {
                             self.set_register_value(0xf, 0);
                         }
 
-                        self.set_X_register_value(instr, yreg_val << 1);
+                        self.set_X_register_value(instr, yreg << 1);
                     },
                     _ => print_unknown_instr(instr)
                 }
             },
             9 => { // jump if registers are unequal
-                let reg_x = self.get_X_register_value(instr);
-                let reg_y = self.get_Y_register_value(instr);
-                    
-                if reg_x != reg_y {
+                if xreg != yreg {
                     self.skip_instructions(1);
                 }
             },
@@ -319,9 +295,6 @@ impl Chip8 {
             0xd => {  // display_draw
                 let height = instr & N;
                
-                let xreg = self.get_X_register_value(instr);
-                let yreg = self.get_Y_register_value(instr);
-
                 self.draw_instr(canv, xreg, yreg, height);
                 self.draw(canv);
             },
@@ -342,7 +315,6 @@ impl Chip8 {
                         self.ireg += xreg;
                     },
                     0x0033 => {
-                        let xreg = self.get_X_register_value(instr);
                         let ones = xreg % 10;
                         let tens = ((xreg - ones) % 100) / 10;
                         let houndreds = ((xreg - tens - ones) % 1000) / 100;
@@ -352,16 +324,12 @@ impl Chip8 {
                         self.rom_bytes[usize_from_u16(self.ireg) + 2] = u8::try_from(ones).unwrap();
                     },
                     0x0055 => {
-                        let xval = get_X(instr);
-
-                        for i in 0..(xval + 1) {
+                        for i in 0..(ixreg + 1) {
                             self.rom_bytes[usize::try_from(self.ireg).unwrap() + i] = self.registers[i];
                         }
                     },
                     0x0065 => {
-                        let xval = get_X(instr);
-
-                        for i in 0..(xval + 1) {
+                        for i in 0..(ixreg + 1) {
                             self.registers[i] = self.rom_bytes[usize::try_from(self.ireg).unwrap() + i];
                         }
                         
@@ -425,7 +393,7 @@ fn get_X(instr: u16) -> usize {
 
 
 fn get_Y(instr: u16) -> usize {
-    usize::try_from((instr & X) >> 4).unwrap()
+    usize::try_from((instr & Y) >> 4).unwrap()
 }
 
 
