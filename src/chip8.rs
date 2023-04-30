@@ -131,7 +131,7 @@ impl Chip8 {
 
 
     fn decode(&mut self, instr: u16, canv: &mut Canvas<Window>) {
-        print_u16_hex(instr);
+        //print_u16_hex(instr);
 
         let ixreg = get_X(instr);
         let iyreg = get_Y(instr);
@@ -207,17 +207,21 @@ impl Chip8 {
                     },
                     0x0004 => { // Add. Also checks overflow. Sets 1 to VF if overflow
                         let reg_y = u8_from_u16(self.get_Y_register_value(instr));
+                        let carry_flag_value: u8;
 
                         match self.registers[ixreg].checked_add(reg_y) {
                             Some(_) => {
-                                self.registers[0xf] = 0;
+                                carry_flag_value = 0;
+                                // self.registers[0xf] = 0;
                             },
                             None => {
-                                self.registers[0xf] = 1;
+                                carry_flag_value = 1;
+                                //self.registers[0xf] = 1;
                             }
                         }
 
                         self.set_X_register_value(instr, (xreg + yreg) & 0xff);
+                        self.registers[0xf] = carry_flag_value;
                     }, // Subtract
                     0x0005 => {
                         let reg_y = self.registers[iyreg];
@@ -231,18 +235,18 @@ impl Chip8 {
                                 let underflow_val = (0xff - (reg_y - self.registers[ixreg])) + 1;
                                 self.registers[ixreg] = underflow_val;
 
-                                self.registers[0xf] = 1; 
+                                self.registers[0xf] = 0; 
                             }
                         }
                     },
                     0x0006 => { // Ambiguous shift
-                        if 0xf000 & yreg == 0x0001 {
+                        self.set_X_register_value(instr, yreg >> 1);
+
+                        if 0b00000001 & yreg == 0b00000001 {
                             self.registers[0xf] = 1;
-                        } else if 0xf000 & yreg == 0x0000 {
+                        } else if 0b00000001 & yreg == 0b00000000 {
                             self.registers[0xf] = 0;
                         }
-
-                        self.set_X_register_value(instr, yreg >> 1);
                     },
                     0x0007 => { // Subtract
                         let reg_y = self.registers[iyreg];
@@ -255,18 +259,18 @@ impl Chip8 {
                             },
                             None => { // Underflow
                                 self.registers[ixreg] = (0xff - (reg_x - reg_y)) + 1;
-                                self.registers[0xf] = 1; 
+                                self.registers[0xf] = 0; 
                             }
                         }
                     },
                     0x000e => { // Ambiguous shift
-                        if 0xf000 & yreg == 0x1000 {
+                        self.set_X_register_value(instr, yreg << 1);
+
+                        if 0b10000000 & yreg == 0b10000000 {
                             self.set_register_value(0xf, 1);
-                        } else if 0xf000 & yreg == 0x0000 {
+                        } else if 0b10000000 & yreg == 0b00000000 {
                             self.set_register_value(0xf, 0);
                         }
-
-                        self.set_X_register_value(instr, yreg << 1);
                     },
                     _ => print_unknown_instr(instr)
                 }
