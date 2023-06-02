@@ -38,7 +38,8 @@ struct Chip8 {
     registers: [u8; 16],
     ip: usize,  // Instruction pointer
     ireg: u16,
-    rom_bytes: Vec<u8>
+    rom_bytes: Vec<u8>,
+    key_pad: [bool; 16]
 }
 
 
@@ -51,7 +52,8 @@ impl Chip8 {
             registers: [0; 16],
             ip: ADDR_OFFSET,
             ireg: 0,
-            rom_bytes: read_rom(rom_name)
+            rom_bytes: read_rom(rom_name),
+            key_pad: [false; 16]
         }
     }
 
@@ -131,7 +133,7 @@ impl Chip8 {
 
 
     fn decode(&mut self, instr: u16, canv: &mut Canvas<Window>) {
-        //print_u16_hex(instr);
+        print_u16_hex(instr);
 
         let ixreg = get_X(instr);
         let iyreg = get_Y(instr);
@@ -301,6 +303,21 @@ impl Chip8 {
                
                 self.draw_instr(canv, xreg, yreg, height);
                 self.draw(canv);
+            },
+            0xe => {  // Skip if key
+                match instr & NN {
+                    0x009e => {  // Skip if key is down
+                        if self.key_pad[ixreg] {
+                            self.ip += 2;
+                        }
+                    },
+                    0x00a1 => {  // Skip if key is not down
+                        if ! self.key_pad[ixreg] {
+                            self.ip += 2;
+                        }
+                    },
+                    _ => print_unknown_instr(instr)
+                }
             },
             0xf => {
                 match instr & NN {
@@ -485,10 +502,33 @@ pub fn main_cpu_loop(rom_name: &str, instr_per_secs: f32) {
     let hz60: u128 = 1000/60;
 
     'mainloop: loop {
+        // Change all keycode values to false
+        
+        for i in 0..0xf
+        {
+            cpu.key_pad[i] = false;
+        }
+
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { .. } => break 'mainloop,
                 Event::KeyDown { keycode: Some(Keycode::Escape), .. } => break 'mainloop,
+                Event::KeyDown { keycode: Some(Keycode::Q), .. } => {cpu.key_pad[0] = true},
+                Event::KeyDown { keycode: Some(Keycode::W), .. } => {cpu.key_pad[1] = true},
+                Event::KeyDown { keycode: Some(Keycode::E), .. } => {cpu.key_pad[2] = true},
+                Event::KeyDown { keycode: Some(Keycode::R), .. } => {cpu.key_pad[3] = true},
+                Event::KeyDown { keycode: Some(Keycode::A), .. } => {cpu.key_pad[4] = true},
+                Event::KeyDown { keycode: Some(Keycode::S), .. } => {cpu.key_pad[5] = true},
+                Event::KeyDown { keycode: Some(Keycode::D), .. } => {cpu.key_pad[6] = true},
+                Event::KeyDown { keycode: Some(Keycode::F), .. } => {cpu.key_pad[7] = true},
+                Event::KeyDown { keycode: Some(Keycode::Z), .. } => {cpu.key_pad[8] = true},
+                Event::KeyDown { keycode: Some(Keycode::X), .. } => {cpu.key_pad[9] = true},
+                Event::KeyDown { keycode: Some(Keycode::C), .. } => {cpu.key_pad[10] = true},
+                Event::KeyDown { keycode: Some(Keycode::V), .. } => {cpu.key_pad[11] = true},
+                Event::KeyDown { keycode: Some(Keycode::Num1), .. } => {cpu.key_pad[12] = true},
+                Event::KeyDown { keycode: Some(Keycode::Num2), .. } => {cpu.key_pad[13] = true},
+                Event::KeyDown { keycode: Some(Keycode::Num3), .. } => {cpu.key_pad[14] = true},
+                Event::KeyDown { keycode: Some(Keycode::Num4), .. } => {cpu.key_pad[15] = true},
                 _ => {}
             }
         }
