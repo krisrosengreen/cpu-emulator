@@ -5,6 +5,7 @@ extern crate sdl2;
 
 use rand::Rng;
 use sdl2::rect::Rect;
+//use std::fmt::Display;
 use std::fs;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -19,13 +20,27 @@ const Y: u16 = 0x00f0;
 
 const ADDR_OFFSET: usize = 0x200;
 
+pub struct Externals {
+    pub display: Display,
+    pub input: Input,
+}
+
+impl Externals {
+    fn new() -> Self {
+        let mut display = Display::new();
+
+        Self {
+            input: Input::new(&mut display),
+            display: display,
+        }
+    }
+}
 
 pub struct Chip8 {
     pub stack: Vec<u16>,
     pub delay_timer: u16,
     pub sound_timer: u16,
-    pub display: Display,
-    pub input: Input,
+    pub externals: Option<Externals>,
     registers: [u8; 16],
     ip: usize, // Instruction pointer
     ireg: u16,
@@ -34,15 +49,12 @@ pub struct Chip8 {
 
 impl Default for Chip8 {
     fn default() -> Self {
-        let mut display = Display::new();
-
         Self {
             stack: Vec::new(),
             delay_timer: 0,
             sound_timer: 0,
-            input: Input::new(&mut display),
-            display: display,
             registers: [0; 16],
+            externals: None,
             ip: ADDR_OFFSET,
             ireg: 0,
             rom_bytes: read_rom("roms/2-ibm-logo.ch8"),
@@ -54,10 +66,26 @@ impl Chip8 {
     fn new(rom_name: &str) -> Self {
         Chip8 {
             rom_bytes: read_rom(rom_name),
+            externals: Some(Externals::new()),
             ..Default::default()
         }
     }
 
+    fn display_mut(&mut self) -> Option<&mut Display> {
+        if self.externals.is_none() {
+            return None;
+        }
+
+        Some(&mut self.externals.as_mut().unwrap().display)
+    }
+
+    fn input_mut(&mut self) -> Option<&mut Input> {
+        if self.externals.is_none() {
+            return None;
+        }
+
+        Some(&mut self.externals.as_mut().unwrap().input)
+    }
     pub fn new_by_bytes(rom_bytes: Vec<u8>) -> Self {
         Chip8 {
             rom_bytes: rom_bytes,
@@ -84,37 +112,42 @@ impl Chip8 {
     }
 
     fn draw_instr(&mut self, xu16: u16, yu16: u16, height: u16) {
-        let x: i32 = i32::try_from(xu16).unwrap();
-        let y: i32 = i32::try_from(yu16).unwrap();
+        if self.externals.is_some() {
+            let x: i32 = i32::try_from(xu16).unwrap();
+            let y: i32 = i32::try_from(yu16).unwrap();
 
-        for isprite in 0..height {
-            self.display.to_on_color();
+            for isprite in 0..height {
+                self.externals.as_mut().unwrap().display.to_on_color();
 
-            let hpp_i32 = i32::try_from(Display::get_height_per_pixel()).unwrap();
-            let wpp_i32 = i32::try_from(Display::get_width_per_pixel()).unwrap();
+                let hpp_i32 = i32::try_from(Display::get_height_per_pixel()).unwrap();
+                let wpp_i32 = i32::try_from(Display::get_width_per_pixel()).unwrap();
 
-            let sprite = self.rom_bytes[usize::try_from(self.ireg + isprite).unwrap()];
+                let sprite = self.rom_bytes[usize::try_from(self.ireg + isprite).unwrap()];
 
-            let isprite_i32 = i32::try_from(isprite).unwrap();
+                let isprite_i32 = i32::try_from(isprite).unwrap();
 
-            for bit in 0..8 {
-                if (1 << (7 - bit)) & sprite != 0 {
-                    self.display
-                        .canvas
-                        .fill_rect(Rect::new(
-                            x * wpp_i32 + bit * wpp_i32,
-                            y * hpp_i32 + isprite_i32 * hpp_i32,
-                            Display::get_width_per_pixel(),
-                            Display::get_height_per_pixel(),
-                        ))
-                        .unwrap();
+                for bit in 0..8 {
+                    if (1 << (7 - bit)) & sprite != 0 {
+                        self.externals
+                            .as_mut()
+                            .unwrap()
+                            .display
+                            .canvas
+                            .fill_rect(Rect::new(
+                                x * wpp_i32 + bit * wpp_i32,
+                                y * hpp_i32 + isprite_i32 * hpp_i32,
+                                Display::get_width_per_pixel(),
+                                Display::get_height_per_pixel(),
+                            ))
+                            .unwrap();
+                    }
                 }
             }
         }
     }
 
     fn draw(&mut self) {
-        self.display.canvas.present();
+        self.display_mut().unwrap().canvas.present();
     }
 
     fn get_delay_timer(&mut self) -> u16 {
@@ -147,7 +180,7 @@ impl Chip8 {
                 match instr & NNN {
                     0xe0 => {
                         // Clear screen
-                        self.display.clear();
+                        self.display_mut().unwrap().canvas.clear();
                     }
                     0xee => {
                         // Return to address from address in stack
@@ -330,13 +363,13 @@ impl Chip8 {
                 match instr & NN {
                     0x009e => {
                         // Skip if key is down
-                        if self.input.key_pad[ixreg] {
+                        if self.input_mut().unwrap().key_pad[ixreg] {
                             self.ip += 2;
                         }
                     }
                     0x00a1 => {
                         // Skip if key is not down
-                        if !self.input.key_pad[ixreg] {
+                        if !self.input_mut().unwrap().key_pad[ixreg] {
                             self.ip += 2;
                         }
                     }
@@ -478,7 +511,7 @@ pub fn get_current_millis() -> u128 {
     since_the_epoch.as_millis()
 }
 
-pub fn main_cpu_loop(rom_name: &str, instr_per_secs: f32) {
+pub fn main_chip_loop(rom_name: &str, instr_per_secs: f32) {
     let mut cpu: Chip8 = Chip8::new(rom_name);
 
     let mut last_time: u128 = get_current_millis();
@@ -488,10 +521,10 @@ pub fn main_cpu_loop(rom_name: &str, instr_per_secs: f32) {
         // Change all keycode values to false
 
         for i in 0..0xf {
-            cpu.input.key_pad[i] = false;
+            cpu.input_mut().unwrap().key_pad[i] = false;
         }
 
-        if InputAction::BreakDisplay == cpu.input.handle_input() {
+        if InputAction::BreakDisplay == cpu.input_mut().unwrap().handle_input() {
             break 'mainloop;
         }
 
@@ -577,7 +610,12 @@ mod test {
     #[test]
     fn OC_1NNN() {
         let rom: Vec<u8> = pad_u16_to_u8(0x1123);
-        let mut chip = Chip8::new_by_bytes(rom);
+        let mut chip = Chip8 {
+            rom_bytes: rom,
+            externals: None,
+            ..Default::default()
+        };
+
         let instr = chip.fetch();
         chip.decode(instr);
         println!("{}", chip.ip);
@@ -588,23 +626,229 @@ mod test {
     #[test]
     fn OC_3XNN() {
         let rom: Vec<u8> = pad_u16_to_u8(0x3011);
-        let mut chip = Chip8::new_by_bytes(rom);
-        chip.registers[0] = 0x11;
+        let mut chip = Chip8 {
+            rom_bytes: rom,
+            externals: None,
+            ..Default::default()
+        };
 
+        chip.registers[0] = 0x11;
         let ip_before = chip.ip;
 
         let instr = chip.fetch();
         chip.decode(instr);
 
-        assert_eq!(chip.ip, ip_before + 4);  
+        assert_eq!(chip.ip, ip_before + 4);
     }
 
     #[test]
-    fn OC_4XNN() {}
+    fn OC_4XNN() {
+        let rom: Vec<u8> = pad_u16_to_u8(0x4011);
+        let mut chip = Chip8 {
+            rom_bytes: rom,
+            externals: None,
+            ..Default::default()
+        };
+
+        chip.registers[0] = 0x12;
+        let ip_before = chip.ip;
+
+        let instr = chip.fetch();
+        chip.decode(instr);
+
+        assert_eq!(chip.ip, ip_before + 4);
+    }
 
     #[test]
-    fn OC_5XY0() {}
+    fn OC_5XY0() {
+        let rom: Vec<u8> = pad_u16_to_u8(0x5010);
+        let mut chip = Chip8 {
+            rom_bytes: rom,
+            externals: None,
+            ..Default::default()
+        };
+
+        chip.registers[0] = 0x12;
+        chip.registers[1] = 0x12;
+        let ip_before = chip.ip;
+
+        let instr = chip.fetch();
+        chip.decode(instr);
+
+        assert_eq!(chip.ip, ip_before + 4);
+    }
 
     #[test]
-    fn OC_9XY0() {}
+    fn OC_9XY0() {
+        let rom: Vec<u8> = pad_u16_to_u8(0x9010);
+        let mut chip = Chip8 {
+            rom_bytes: rom,
+            externals: None,
+            ..Default::default()
+        };
+
+        chip.registers[0] = 0x12;
+        chip.registers[1] = 0x13;
+        let ip_before = chip.ip;
+
+        let instr = chip.fetch();
+        chip.decode(instr);
+
+        assert_eq!(chip.ip, ip_before + 4);
+    }
+
+    #[test]
+    fn OC_6XNN() {
+        let rom: Vec<u8> = pad_u16_to_u8(0x6111);
+        let mut chip = Chip8 {
+            rom_bytes: rom,
+            externals: None,
+            ..Default::default()
+        };
+
+        let instr = chip.fetch();
+        chip.decode(instr);
+
+        assert_eq!(chip.registers[1], 0x11);
+    }
+
+    #[test]
+    fn OC_7XNN() {
+        let rom: Vec<u8> = pad_u16_to_u8(0x7111);
+        let mut chip = Chip8 {
+            rom_bytes: rom,
+            externals: None,
+            ..Default::default()
+        };
+
+        let instr = chip.fetch();
+        chip.decode(instr);
+
+        assert_eq!(chip.registers[1], 0x11);
+    }
+
+    #[test]
+    fn OC_8XY0() {
+        let rom: Vec<u8> = pad_u16_to_u8(0x8010);
+        let mut chip = Chip8 {
+            rom_bytes: rom,
+            externals: None,
+            ..Default::default()
+        };
+
+        chip.registers[1] = 0x11;
+
+        let instr = chip.fetch();
+        chip.decode(instr);
+
+        assert_eq!(chip.registers[1], 0x11);
+    }
+
+    #[test]
+    fn OC_8XY1() {
+        let rom: Vec<u8> = pad_u16_to_u8(0x8011);
+        let mut chip = Chip8 {
+            rom_bytes: rom,
+            externals: None,
+            ..Default::default()
+        };
+
+        chip.registers[0] = 0x18;
+        chip.registers[1] = 0x11;
+
+        let instr = chip.fetch();
+        chip.decode(instr);
+
+        assert_eq!(chip.registers[0], 0x18 | 0x11);
+    }
+
+    #[test]
+    fn OC_8XY2() {
+        let rom: Vec<u8> = pad_u16_to_u8(0x8012);
+        let mut chip = Chip8 {
+            rom_bytes: rom,
+            externals: None,
+            ..Default::default()
+        };
+
+        chip.registers[0] = 0x18;
+        chip.registers[1] = 0x11;
+
+        let instr = chip.fetch();
+        chip.decode(instr);
+
+        assert_eq!(chip.registers[0], 0x18 & 0x11);
+    }
+
+    #[test]
+    fn OC_8XY3() {
+        let rom: Vec<u8> = pad_u16_to_u8(0x8013);
+        let mut chip = Chip8 {
+            rom_bytes: rom,
+            externals: None,
+            ..Default::default()
+        };
+
+        chip.registers[0] = 0x18;
+        chip.registers[1] = 0x11;
+
+        let instr = chip.fetch();
+        chip.decode(instr);
+
+        assert_eq!(chip.registers[0], 0x18 ^ 0x11);
+    }
+
+    #[test]
+    fn OC_8XY4() {
+        let rom: Vec<u8> = pad_u16_to_u8(0x8014);
+        let mut chip = Chip8 {
+            rom_bytes: rom,
+            externals: None,
+            ..Default::default()
+        };
+
+        chip.registers[0] = 0x18;
+        chip.registers[1] = 0x11;
+
+        let instr = chip.fetch();
+        chip.decode(instr);
+
+        assert_eq!(chip.registers[0], 0x18 + 0x11);
+    }
+
+    #[test]
+    fn OC_8XY5() {
+        let rom: Vec<u8> = pad_u16_to_u8(0x8015);
+        let mut chip = Chip8 {
+            rom_bytes: rom,
+            externals: None,
+            ..Default::default()
+        };
+
+        chip.registers[0] = 0x18;
+        chip.registers[1] = 0x11;
+
+        let instr = chip.fetch();
+        chip.decode(instr);
+
+        assert_eq!(chip.registers[0], 0x18 - 0x11);
+    }
+
+    #[test]
+    fn OC_8XY7() {
+        let rom: Vec<u8> = pad_u16_to_u8(0x8017);
+        let mut chip = Chip8 {
+            rom_bytes: rom,
+            externals: None,
+            ..Default::default()
+        };
+
+        chip.registers[0] = 0x11;
+        chip.registers[1] = 0x18;
+
+        let instr = chip.fetch();
+        chip.decode(instr);
+
+        assert_eq!(chip.registers[0], 0x18 - 0x11);
+    }
 }
