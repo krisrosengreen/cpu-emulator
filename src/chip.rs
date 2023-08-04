@@ -19,6 +19,7 @@ const Y: u16 = 0x00f0;
 
 const ADDR_OFFSET: usize = 0x200;
 
+
 pub struct Chip8 {
     pub stack: Vec<u16>,
     pub delay_timer: u16,
@@ -31,11 +32,11 @@ pub struct Chip8 {
     rom_bytes: Vec<u8>,
 }
 
-impl Chip8 {
-    fn new(rom_name: &str) -> Self {
+impl Default for Chip8 {
+    fn default() -> Self {
         let mut display = Display::new();
 
-        Chip8 {
+        Self {
             stack: Vec::new(),
             delay_timer: 0,
             sound_timer: 0,
@@ -44,7 +45,23 @@ impl Chip8 {
             registers: [0; 16],
             ip: ADDR_OFFSET,
             ireg: 0,
+            rom_bytes: read_rom("roms/2-ibm-logo.ch8"),
+        }
+    }
+}
+
+impl Chip8 {
+    fn new(rom_name: &str) -> Self {
+        Chip8 {
             rom_bytes: read_rom(rom_name),
+            ..Default::default()
+        }
+    }
+
+    pub fn new_by_bytes(rom_bytes: Vec<u8>) -> Self {
+        Chip8 {
+            rom_bytes: rom_bytes,
+            ..Default::default()
         }
     }
 
@@ -493,5 +510,101 @@ pub fn main_cpu_loop(rom_name: &str, instr_per_secs: f32) {
 
 #[cfg(test)]
 mod test {
+    use super::*;
+
+    // Tools for testing
+    fn u16_to_u8(instr: u16) -> Vec<u8> {
+        let pair2 = u8::try_from(instr & 0xff).unwrap();
+        let pair1 = u8::try_from((instr & 0xff00) >> 8).unwrap();
+
+        let mut ret: Vec<u8> = Vec::new();
+
+        ret.push(pair1);
+        ret.push(pair2);
+
+        ret
+    }
+
+    fn vec_u16_to_u8(instrs: Vec<u16>) -> Vec<u8> {
+        let mut ret: Vec<u8> = Vec::new();
+
+        for instr in instrs {
+            let mut instr_u8 = u16_to_u8(instr);
+            ret.append(&mut instr_u8);
+        }
+
+        ret
+    }
+
+    fn pad_u16_to_u8(instr: u16) -> Vec<u8> {
+        let mut ret: Vec<u8> = u16_to_u8(instr);
+        pad_u8_vec(&mut ret);
+
+        ret
+    }
+
+    fn pad_u8_vec(v: &mut Vec<u8>) {
+        for _ in 0..512 {
+            v.insert(0, 0);
+        }
+    }
+
+    // Now to the tests!
+
+    #[test]
+    fn test_u16_conversion_to_u8() {
+        let ret = u16_to_u8(0xfafb);
+
+        assert_eq!(ret[0], 0xfa);
+        assert_eq!(ret[1], 0xfb);
+    }
+
+    #[test]
+    fn test_vec_u16_to_u8() {
+        let mut v: Vec<u16> = Vec::new();
+        v.push(0x1234);
+        v.push(0x4321);
+
+        let ret = vec_u16_to_u8(v);
+
+        assert_eq!(ret[0], 0x12);
+        assert_eq!(ret[1], 0x34);
+        assert_eq!(ret[2], 0x43);
+        assert_eq!(ret[3], 0x21);
+    }
+
     // Test instructions
+    #[test]
+    fn OC_1NNN() {
+        let rom: Vec<u8> = pad_u16_to_u8(0x1123);
+        let mut chip = Chip8::new_by_bytes(rom);
+        let instr = chip.fetch();
+        chip.decode(instr);
+        println!("{}", chip.ip);
+
+        assert_eq!(chip.ip, 0x123);
+    }
+
+    #[test]
+    fn OC_3XNN() {
+        let rom: Vec<u8> = pad_u16_to_u8(0x3011);
+        let mut chip = Chip8::new_by_bytes(rom);
+        chip.registers[0] = 0x11;
+
+        let ip_before = chip.ip;
+
+        let instr = chip.fetch();
+        chip.decode(instr);
+
+        assert_eq!(chip.ip, ip_before + 4);  
+    }
+
+    #[test]
+    fn OC_4XNN() {}
+
+    #[test]
+    fn OC_5XY0() {}
+
+    #[test]
+    fn OC_9XY0() {}
 }
