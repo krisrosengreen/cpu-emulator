@@ -339,7 +339,7 @@ impl Chip8 {
             }
             0xb => {
                 // jump with offset from register v0
-                let jump_addr = instr & NNN + u16_from_u8(self.registers[0]);
+                let jump_addr = (instr&NNN) + self.get_X_register_value(instr);
                 self.ip = usize_from_u16(jump_addr);
             }
             0xc => {
@@ -849,5 +849,37 @@ mod test {
         chip.decode(instr);
 
         assert_eq!(chip.registers[0], 0x18 - 0x11);
+    }
+
+    #[test]
+    fn OC_ANNN() {
+        let rom: Vec<u8> = pad_u16_to_u8(0xa123);
+        let mut chip = Chip8 {
+            rom_bytes: rom,
+            externals: None,
+            ..Default::default()
+        };
+
+        let instr = chip.fetch();
+        chip.decode(instr);
+
+        assert_eq!(chip.ireg, 0x123);
+    }
+
+    #[test]
+    fn OC_BXNN() {
+        let rom: Vec<u8> = pad_u16_to_u8(0xb123);
+        let mut chip = Chip8 {
+            rom_bytes: rom,
+            externals: None,
+            ..Default::default()
+        };
+
+        chip.registers[1] = 0x11;
+
+        let instr = chip.fetch();
+        chip.decode(instr);
+
+        assert_eq!(chip.ip, 0x11 + 0x123);
     }
 }
