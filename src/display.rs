@@ -8,7 +8,8 @@ const HEIGHT: u32 = 32; // Pixels
 const WIDTH_PER_PIXEL: u32 = 20;
 const HEIGHT_PER_PIXEL: u32 = 20;
 
-const PIXEL_OFF_COLOR: Color = Color::RGB(0x99, 0x66, 0x01);
+//const PIXEL_OFF_COLOR: Color = Color::RGB(0x99, 0x66, 0x01);
+const PIXEL_OFF_COLOR: Color = Color::RGB(0x0, 0x0, 0x0);
 const PIXEL_ON_COLOR: Color = Color::RGB(0xff, 0xcc, 0x01);
 
 pub struct Display {

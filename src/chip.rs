@@ -83,9 +83,9 @@ impl Chip8 {
         if self.externals.is_none() {
             return None;
         }
-
         Some(&mut self.externals.as_mut().unwrap().input)
     }
+
     pub fn new_by_bytes(rom_bytes: Vec<u8>) -> Self {
         Chip8 {
             rom_bytes: rom_bytes,
@@ -112,13 +112,12 @@ impl Chip8 {
     }
 
     fn draw_instr(&mut self, xu16: u16, yu16: u16, height: u16) {
+        self.externals.as_mut().unwrap().display.to_on_color();
         if self.externals.is_some() {
             let x: i32 = i32::try_from(xu16).unwrap();
             let y: i32 = i32::try_from(yu16).unwrap();
 
             for isprite in 0..height {
-                self.externals.as_mut().unwrap().display.to_on_color();
-
                 let hpp_i32 = i32::try_from(Display::get_height_per_pixel()).unwrap();
                 let wpp_i32 = i32::try_from(Display::get_width_per_pixel()).unwrap();
 
@@ -180,7 +179,7 @@ impl Chip8 {
                 match instr & NNN {
                     0xe0 => {
                         // Clear screen
-                        self.display_mut().unwrap().canvas.clear();
+                        self.display_mut().unwrap().clear();
                     }
                     0xee => {
                         // Return to address from address in stack
