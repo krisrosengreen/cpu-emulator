@@ -518,11 +518,6 @@ pub fn main_chip_loop(rom_name: &str, instr_per_secs: f32) {
 
     'mainloop: loop {
         // Change all keycode values to false
-
-        for i in 0..0xf {
-            cpu.input_mut().unwrap().key_pad[i] = false;
-        }
-
         if InputAction::BreakDisplay == cpu.input_mut().unwrap().handle_input() {
             break 'mainloop;
         }

@@ -35,66 +35,160 @@ impl Input {
                     keycode: Some(Keycode::Q),
                     ..
                 } => self.key_pad[0] = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::Q),
+                    ..
+                } => self.key_pad[0] = false,
+
+
                 Event::KeyDown {
                     keycode: Some(Keycode::W),
                     ..
                 } => self.key_pad[1] = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::W),
+                    ..
+                } => self.key_pad[1] = false,
+
+
                 Event::KeyDown {
                     keycode: Some(Keycode::E),
                     ..
                 } => self.key_pad[2] = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::E),
+                    ..
+                } => self.key_pad[2] = false,
+
+
                 Event::KeyDown {
                     keycode: Some(Keycode::R),
                     ..
                 } => self.key_pad[3] = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::R),
+                    ..
+                } => self.key_pad[3] = false,
+
+
                 Event::KeyDown {
                     keycode: Some(Keycode::A),
                     ..
                 } => self.key_pad[4] = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::A),
+                    ..
+                } => self.key_pad[4] = false,
+
+
                 Event::KeyDown {
                     keycode: Some(Keycode::S),
                     ..
                 } => self.key_pad[5] = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::S),
+                    ..
+                } => self.key_pad[5] = false,
+
+
                 Event::KeyDown {
                     keycode: Some(Keycode::D),
                     ..
                 } => self.key_pad[6] = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::D),
+                    ..
+                } => self.key_pad[6] = false,
+
+
                 Event::KeyDown {
                     keycode: Some(Keycode::F),
                     ..
                 } => self.key_pad[7] = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::F),
+                    ..
+                } => self.key_pad[7] = false,
+
+
                 Event::KeyDown {
                     keycode: Some(Keycode::Z),
                     ..
                 } => self.key_pad[8] = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::Z),
+                    ..
+                } => self.key_pad[8] = false,
+
+
                 Event::KeyDown {
                     keycode: Some(Keycode::X),
                     ..
                 } => self.key_pad[9] = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::X),
+                    ..
+                } => self.key_pad[9] = false,
+
+
                 Event::KeyDown {
                     keycode: Some(Keycode::C),
                     ..
                 } => self.key_pad[10] = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::C),
+                    ..
+                } => self.key_pad[10] = false,
+
+
                 Event::KeyDown {
                     keycode: Some(Keycode::V),
                     ..
                 } => self.key_pad[11] = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::V),
+                    ..
+                } => self.key_pad[11] = false,
+
+
                 Event::KeyDown {
                     keycode: Some(Keycode::Num1),
                     ..
                 } => self.key_pad[12] = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::Num1),
+                    ..
+                } => self.key_pad[12] = true,
+
+
                 Event::KeyDown {
                     keycode: Some(Keycode::Num2),
                     ..
                 } => self.key_pad[13] = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::Num2),
+                    ..
+                } => self.key_pad[13] = false,
+
+
                 Event::KeyDown {
                     keycode: Some(Keycode::Num3),
                     ..
                 } => self.key_pad[14] = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::Num3),
+                    ..
+                } => self.key_pad[14] = false,
+
+
                 Event::KeyDown {
                     keycode: Some(Keycode::Num4),
                     ..
                 } => self.key_pad[15] = true,
+                Event::KeyUp {
+                    keycode: Some(Keycode::Num4),
+                    ..
+                } => self.key_pad[15] = false,
                 _ => {}
             }
         }
